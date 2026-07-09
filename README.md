@@ -1,260 +1,93 @@
 # AI-Aware Rate Limiter
 
-A production-style rate limiter for AI/LLM APIs that enforces **both**
-Requests-Per-Minute (RPM) **and** Tokens-Per-Minute (TPM) per client, built
-with Java 21 + Spring Boot 3 + Maven.
+A production-style **AI-Aware Rate Limiter** built using **Java 21**, **Spring Boot 3**, and **Maven**. The application enforces both **Requests Per Minute (RPM)** and **Tokens Per Minute (TPM)** limits for AI/LLM APIs, ensuring fair resource allocation and preventing excessive usage. It uses a thread-safe in-memory implementation, making it lightweight, fast, and easy to deploy without requiring external services.
 
-Runs entirely in-memory out of the box — **no Redis, no SQL database, no
-external services required.** The storage layer is interface-based, so a
-Redis-backed implementation is already included and can be switched on with
-a single property.
+---
 
-## Why RPM *and* TPM?
+## Features
 
-Most rate limiters only count requests. That's insufficient for LLM APIs,
-where a single request can cost anywhere from a few tokens to tens of
-thousands. A client sending one huge request per minute can still blow
-through your model provider's throughput budget even while staying well
-under an RPM cap — TPM closes that gap.
+- AI-aware rate limiting using both **Requests Per Minute (RPM)** and **Tokens Per Minute (TPM)**.
+- Thread-safe in-memory implementation using `ConcurrentHashMap`.
+- Independent rate-limiting windows maintained for every client.
+- Configurable rate limit policies for different clients.
+- RESTful APIs for rate limit validation and quota status.
+- Real-time responses with remaining request quota, remaining token quota, and window reset time.
+- Automatic expiration and reset of rate-limiting windows.
+- Input validation and centralized exception handling.
+- Clean, modular architecture following SOLID principles.
+- Unit and integration testing for business logic and API endpoints.
+- Lightweight implementation with no SQL database or external storage dependencies.
+- Docker-ready architecture for easy deployment.
+
+---
+
+## Why RPM and TPM?
+
+Traditional rate limiters only count the number of requests. However, AI and Large Language Model (LLM) APIs consume varying numbers of tokens per request. A single large request may consume significantly more resources than several smaller ones. This project combines **Requests Per Minute (RPM)** and **Tokens Per Minute (TPM)** limiting to provide a more accurate and efficient mechanism for protecting AI services from abuse while ensuring fair resource utilization.
+
+---
 
 ## Architecture
 
 ```
-controller/   REST endpoints (HTTP concerns only)
-service/      Business rules: policy resolution, allow/deny decision
-storage/      RateLimitStore interface + InMemory / Redis implementations
-model/        DTOs and value types shared across layers
-config/       @ConfigurationProperties, conditional bean wiring
-exception/    Domain exceptions + @RestControllerAdvice
-util/         TimeProvider seam for deterministic testing
+controller/
+service/
+storage/
+model/
+config/
+exception/
+util/
 ```
 
-The dependency direction is strictly one-way:
+### Layer Responsibilities
 
-```
-controller -> service -> storage (interface)
-                            ^
-                            |
-              InMemoryRateLimitStore / RedisRateLimitStore
-```
+- **Controller** – Handles incoming HTTP requests and responses.
+- **Service** – Contains the core rate-limiting business logic.
+- **Storage** – Manages rate-limit counters using a thread-safe in-memory store.
+- **Model** – Contains request, response, and domain models.
+- **Configuration** – Stores application configuration and policies.
+- **Exception** – Provides centralized exception handling.
+- **Utility** – Shared helper classes and utilities.
 
-`RateLimiterServiceImpl` depends only on the `RateLimitStore` **interface**.
-It has no idea whether counters live in a `ConcurrentHashMap` or a Redis
-hash. That's what makes swapping backends a config change, not a rewrite.
+---
 
-### Storage abstraction
+## How It Works
 
-```java
-public interface RateLimitStore {
-    RateLimitCounters incrementAndGet(String key, long windowSeconds, long requestCost, long tokenCost);
-    RateLimitCounters peek(String key, long windowSeconds);
-}
-```
+For every incoming request, the application:
 
-Both implementations satisfy the same contract:
+1. Identifies the client.
+2. Retrieves or creates the client's active rate-limiting window.
+3. Tracks both request count and estimated token usage.
+4. Checks the configured RPM and TPM limits.
+5. Allows or rejects the request based on both limits.
+6. Returns the remaining request quota, remaining token quota, and reset time.
 
-| | InMemoryRateLimitStore | RedisRateLimitStore |
-|---|---|---|
-| Data structure | `ConcurrentHashMap<String, WindowEntry>` | Redis hash (`HINCRBY`) |
-| Atomicity | `ConcurrentHashMap#compute` (per-key lock) | Lua script (server-side atomic) |
-| Expiry | Timestamp check + scheduled sweep | Native Redis `TTL` |
-| Scope | Single JVM | Shared across instances |
-| Bean activated by | `ratelimiter.storage.type=memory` (default) | `ratelimiter.storage.type=redis` |
+---
 
-### Windowing algorithm
+## Design Highlights
 
-Fixed window, per client, starting at the client's *first* request rather
-than clock-aligned minute boundaries — identical behavior in both stores:
+- Fixed-window rate limiting algorithm.
+- O(1) lookup and update using `ConcurrentHashMap`.
+- Thread-safe concurrent request handling.
+- Configurable policies through application properties.
+- Modular and extensible architecture.
+- Separation of concerns between API, business logic, and storage.
+- Production-style code structure suitable for real-world backend applications.
 
-1. First request for a client creates a window and starts a `windowSeconds`
-   countdown (in-memory: a stored start timestamp; Redis: `EXPIRE`).
-2. Every subsequent request in that window atomically increments the
-   request and token counters.
-3. Once `now >= windowStart + windowSeconds`, the next request rolls the
-   window over and starts fresh.
-4. A request is **allowed** only if both the post-increment request count
-   and token count are within policy limits; otherwise it's denied but the
-   counters still reflect the attempt (standard fixed-window semantics —
-   the same approach used by GitHub/Stripe-style APIs).
+---
 
-## Running it
+## Tech Stack
 
-Requires JDK 21 and Maven (or use the included `./mvnw` wrapper).
+- Java 21
+- Spring Boot 3
+- Maven
+- ConcurrentHashMap
+- JUnit
+- Docker
+- Postman
 
-```bash
-mvn spring-boot:run
-```
+---
 
-The API is now on `http://localhost:8080` — no other setup needed.
+## Project Goals
 
-### Run the tests
-
-```bash
-mvn test
-```
-
-Includes concurrency tests (50 threads × 100 increments hammering the same
-client key) that assert no increments are lost, plus service-layer tests for
-the allow/deny decision logic and controller tests for HTTP status mapping.
-
-### Docker
-
-```bash
-docker build -t ai-rate-limiter .
-docker run -p 8080:8080 ai-rate-limiter
-```
-
-or with Compose (in-memory storage, no Redis container started):
-
-```bash
-docker compose up
-```
-
-## API Reference
-
-### `POST /api/v1/rate-limit/check`
-
-Consumes one request + the given token estimate from the client's current
-window.
-
-**Request**
-```json
-{ "clientId": "demo-client", "estimatedTokens": 250 }
-```
-`estimatedTokens` is optional (defaults to 0) for RPM-only callers.
-
-**Response — `200 OK`** (allowed) or **`429 Too Many Requests`** (denied):
-```json
-{
-  "allowed": true,
-  "clientId": "demo-client",
-  "requestLimit": 60,
-  "remainingRequests": 59,
-  "tokenLimit": 10000,
-  "remainingTokens": 9750,
-  "resetInSeconds": 47,
-  "resetAtEpochSeconds": 1735680047,
-  "reason": null
-}
-```
-When denied, `reason` is one of `RPM_EXCEEDED`, `TPM_EXCEEDED`, or
-`RPM_AND_TPM_EXCEEDED`.
-
-### `GET /api/v1/rate-limit/status/{clientId}`
-
-Read-only quota lookup — does **not** consume any allowance. Same response
-shape as above.
-
-### Error responses
-
-Validation failures (missing/blank `clientId`, negative tokens, malformed
-JSON) return `400` with:
-```json
-{
-  "timestamp": "2026-07-09T10:15:30Z",
-  "status": 400,
-  "error": "Validation Failed",
-  "message": "Request payload is invalid",
-  "details": ["clientId: clientId must not be blank"]
-}
-```
-
-A sample Postman collection is at
-[`postman/AI-Aware-Rate-Limiter.postman_collection.json`](postman/AI-Aware-Rate-Limiter.postman_collection.json).
-Or with curl:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/rate-limit/check \
-  -H "Content-Type: application/json" \
-  -d '{"clientId":"demo-client","estimatedTokens":250}'
-
-curl http://localhost:8080/api/v1/rate-limit/status/demo-client
-```
-
-## Configuration
-
-All in `src/main/resources/application.properties`:
-
-```properties
-ratelimiter.storage.type=memory          # memory | redis
-ratelimiter.window-seconds=60
-ratelimiter.default-policy.requests-per-minute=60
-ratelimiter.default-policy.tokens-per-minute=10000
-
-# Optional per-client overrides
-ratelimiter.client-policies.premium-client.requests-per-minute=600
-ratelimiter.client-policies.premium-client.tokens-per-minute=200000
-
-# In-memory housekeeping (ignored when storage.type=redis)
-ratelimiter.cleanup.enabled=true
-ratelimiter.cleanup.interval-ms=30000
-
-# Only read when storage.type=redis
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-```
-
-Every property can also be set as an environment variable (Spring's relaxed
-binding), e.g. `RATELIMITER_STORAGE_TYPE=redis`.
-
-## Switching to Redis
-
-The Redis implementation already ships in this repo — it's just inactive by
-default. To turn it on:
-
-1. **Start Redis.** Easiest via the bundled compose profile:
-   ```bash
-   docker compose --profile redis up
-   ```
-2. **Flip one property** (`application.properties`, env var, or `-D` flag):
-   ```properties
-   ratelimiter.storage.type=redis
-   spring.data.redis.host=localhost
-   spring.data.redis.port=6379
-   ```
-3. **Nothing else changes.** `RedisConfig` (`@ConditionalOnProperty`) wires
-   up a `StringRedisTemplate` and loads
-   `src/main/resources/scripts/rate_limit.lua` as a `RedisScript`.
-   `RedisRateLimitStore` implements the exact same `RateLimitStore`
-   interface `InMemoryRateLimitStore` does, so `RateLimiterServiceImpl`,
-   the controller, and every test above the storage layer are completely
-   unaffected.
-
-### Why a Lua script instead of separate `INCR` calls?
-
-A naive "read count, check limit, increment, set TTL if new" sequence is
-**not atomic** across separate Redis round trips — two concurrent requests
-could both read the same pre-increment count and both decide they're under
-the limit. `scripts/rate_limit.lua` runs the whole sequence as one
-server-side script, so Redis executes it as a single atomic operation, the
-same guarantee `ConcurrentHashMap#compute` provides for the in-memory store,
-but now valid across multiple application instances sharing one Redis.
-
-```lua
--- KEYS[1]=key, ARGV[1]=windowSeconds, ARGV[2]=requestCost, ARGV[3]=tokenCost
--- returns { requestCount, tokenCount, ttlSecondsRemaining }
-```
-
-See [`src/main/resources/scripts/rate_limit.lua`](src/main/resources/scripts/rate_limit.lua)
-for the full script.
-
-### Extending further
-
-Adding a third backend (e.g. DynamoDB, Hazelcast) means: implement
-`RateLimitStore`, annotate the bean with a matching
-`@ConditionalOnProperty(havingValue = "...")`, and add a new
-`ratelimiter.storage.type` value. No other class needs to change.
-
-## Design notes / trade-offs
-
-- **Fixed window, not sliding log/leaky bucket** — chosen for O(1) memory
-  per client and trivial Redis parity, at the cost of allowing up to ~2x
-  the limit right at a window boundary. Documented here rather than hidden;
-  swapping in a sliding-window algorithm only touches the store
-  implementations, not the interface.
-- **Counters increment even when denied** — matches how most public APIs
-  (GitHub, Stripe) behave: the attempt still "costs" against the window so
-  clients can't retry-storm their way around the limit.
-- **No SQL, ORM, Kafka, or Kubernetes** — deliberately out of scope per the
-  brief; this is a focused, embeddable rate-limiting component, not a
-  platform.
+This project demonstrates the implementation of a scalable, maintainable, and AI-aware backend rate-limiting system capable of controlling both request frequency and token consumption. It showcases backend architecture, concurrent programming, REST API development, clean code practices, and production-oriented software design principles.
