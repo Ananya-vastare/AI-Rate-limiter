@@ -1,0 +1,67 @@
+{
+  "info": {
+    "name": "AI-Aware Rate Limiter",
+    "description": "Sample requests for the RPM + TPM rate limiter API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" }
+  ],
+  "item": [
+    {
+      "name": "Check rate limit - allowed",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clientId\": \"demo-client\",\n  \"estimatedTokens\": 250\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/rate-limit/check", "host": ["{{baseUrl}}"], "path": ["api", "v1", "rate-limit", "check"] }
+      }
+    },
+    {
+      "name": "Check rate limit - RPM only (no tokens)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clientId\": \"demo-client\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/rate-limit/check", "host": ["{{baseUrl}}"], "path": ["api", "v1", "rate-limit", "check"] }
+      }
+    },
+    {
+      "name": "Check rate limit - large token burst (expect TPM_EXCEEDED)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clientId\": \"demo-client\",\n  \"estimatedTokens\": 50000\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/rate-limit/check", "host": ["{{baseUrl}}"], "path": ["api", "v1", "rate-limit", "check"] }
+      }
+    },
+    {
+      "name": "Get client status (no consumption)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/api/v1/rate-limit/status/demo-client", "host": ["{{baseUrl}}"], "path": ["api", "v1", "rate-limit", "status", "demo-client"] }
+      }
+    },
+    {
+      "name": "Invalid request - missing clientId (expect 400)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"estimatedTokens\": 100\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/rate-limit/check", "host": ["{{baseUrl}}"], "path": ["api", "v1", "rate-limit", "check"] }
+      }
+    }
+  ]
+}

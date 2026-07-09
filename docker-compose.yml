@@ -1,0 +1,17 @@
+services:
+  ratelimiter:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Flip to "redis" (and run `docker compose --profile redis up`) to
+      # switch backends with zero code changes.
+      RATELIMITER_STORAGE_TYPE: memory
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    profiles: ["redis"]
