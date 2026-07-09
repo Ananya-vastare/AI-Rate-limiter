@@ -2,7 +2,6 @@
 
 A production-style **AI-Aware Rate Limiter** built using **Java 21**, **Spring Boot 3**, and **Maven**. The application enforces both **Requests Per Minute (RPM)** and **Tokens Per Minute (TPM)** limits for AI/LLM APIs, ensuring fair resource allocation and preventing excessive usage. It uses a thread-safe in-memory implementation, making it lightweight, fast, and easy to deploy without requiring external services.
 
----
 
 ## Features
 
@@ -19,13 +18,11 @@ A production-style **AI-Aware Rate Limiter** built using **Java 21**, **Spring B
 - Lightweight implementation with no SQL database or external storage dependencies.
 - Docker-ready architecture for easy deployment.
 
----
 
 ## Why RPM and TPM?
 
 Traditional rate limiters only count the number of requests. However, AI and Large Language Model (LLM) APIs consume varying numbers of tokens per request. A single large request may consume significantly more resources than several smaller ones. This project combines **Requests Per Minute (RPM)** and **Tokens Per Minute (TPM)** limiting to provide a more accurate and efficient mechanism for protecting AI services from abuse while ensuring fair resource utilization.
 
----
 
 ## Architecture
 
@@ -49,7 +46,7 @@ util/
 - **Exception** – Provides centralized exception handling.
 - **Utility** – Shared helper classes and utilities.
 
----
+
 
 ## How It Works
 
@@ -62,7 +59,7 @@ For every incoming request, the application:
 5. Allows or rejects the request based on both limits.
 6. Returns the remaining request quota, remaining token quota, and reset time.
 
----
+
 
 ## Design Highlights
 
@@ -74,8 +71,6 @@ For every incoming request, the application:
 - Separation of concerns between API, business logic, and storage.
 - Production-style code structure suitable for real-world backend applications.
 
----
-
 ## Tech Stack
 
 - Java 21
@@ -86,7 +81,6 @@ For every incoming request, the application:
 - Docker
 - Postman
 
----
 
 ## Project Goals
 
